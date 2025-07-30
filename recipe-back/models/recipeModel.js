@@ -9,6 +9,9 @@ const Recipe = sequelize.define('Recipe', {
   preparationTime: { type: DataTypes.INTEGER },
   status: { type: DataTypes.ENUM('favorite', 'to try', 'made before'), allowNull: true },
   metadata: { type: DataTypes.TEXT, allowNull: true },
+  image: { type: DataTypes.STRING, allowNull: true }, // New field!**
+  flavor: { type: DataTypes.STRING, allowNull: true },
+
 });
 
 module.exports = Recipe;
