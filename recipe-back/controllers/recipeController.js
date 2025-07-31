@@ -84,36 +84,75 @@ exports.deleteRecipe = async (req, res) => {
   }
 };
 
+
+
+// Example extended keyword dictionary
+const flavorKeywords = {
+  sour: ['sour', 'tangy', 'acidic', 'zesty'],
+  sweet: ['sweet', 'sugary', 'dessert', 'honey'],
+  spicy: ['spicy', 'hot', 'chili', 'peppery'],
+  salty: ['salty', 'briny', 'savory'],
+  bitter: ['bitter', 'sharp', 'harsh'],
+  umami: ['umami', 'meaty', 'brothy', 'savory'],
+};
+
+// Helper to detect flavor category from prompt
+function detectFlavorCategory(prompt) {
+  const lowerPrompt = prompt.toLowerCase();
+  for (const [flavor, keywords] of Object.entries(flavorKeywords)) {
+    if (keywords.some(word => lowerPrompt.includes(word))) {
+      return flavor;
+    }
+  }
+  return null;
+}
+
+// Basic scoring system
+function scoreRecipe(recipe, prompt) {
+  const text = `${recipe.name} ${recipe.ingredients}`.toLowerCase();
+  const promptWords = prompt.toLowerCase().split(/\s+/);
+  let score = 0;
+  for (const word of promptWords) {
+    if (text.includes(word)) score++;
+  }
+  return score;
+}
+
 exports.aiSearch = async (req, res) => {
   try {
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ message: 'Prompt is required' });
 
-    // Example flavor/ingredient keywords for basic "AI" understanding
-    const flavors = ['sour', 'sweet', 'spicy', 'salty', 'bitter', 'umami'];
-    const foundFlavor = flavors.find(f => prompt.toLowerCase().includes(f));
+    const detectedFlavor = detectFlavorCategory(prompt);
+    let whereClause;
 
-    let where = {};
-
-    if (foundFlavor) {
-      where.flavor = foundFlavor;
+    if (detectedFlavor) {
+      whereClause = { flavor: detectedFlavor };
     } else {
-      // Fallback: search in ingredients or name
-      where = {
-        [require('sequelize').Op.or]: [
-          { ingredients: { [require('sequelize').Op.like]: `%${prompt}%` } },
-          { name: { [require('sequelize').Op.like]: `%${prompt}%` } },
-        ]
+      whereClause = {
+        [Op.or]: [
+          { name: { [Op.like]: `%${prompt}%` } },
+          { ingredients: { [Op.like]: `%${prompt}%` } },
+        ],
       };
     }
 
-    const recipes = await require('../models/Recipe').findAll({ where });
+    const recipes = await Recipe.findAll({ where: whereClause });
 
-    if (recipes.length === 0) {
-      return res.json({ message: 'No recipes found matching your request.' });
+    if (!recipes.length) {
+      return res.status(404).json({ message: 'No matching recipes found.' });
     }
-    res.json(recipes);
+
+    // Apply scoring and return sorted recipes
+    const scoredResults = recipes
+      .map(recipe => ({ recipe, score: scoreRecipe(recipe, prompt) }))
+      .sort((a, b) => b.score - a.score)
+      .map(result => result.recipe);
+
+    res.json(scoredResults);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error('AI Search Error:', err);
+    res.status(500).json({ message: 'Internal server error.' });
   }
 };
+
